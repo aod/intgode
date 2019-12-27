@@ -19,20 +19,27 @@ var defaultInstructionSet = map[opcodeName]opcode{
 
 // The IntcodeProgram interface represents an executable intcode program
 type IntcodeProgram interface {
-	// Starts the execution of the intcode program
+	// Starts the execution of the intcode program.
 	Exec()
-	// Returns the memory state
+	// Returns the memory state.
 	Memory() map[int]int
-	// Returns whether the program has halted or not
+	// Returns whether the program has halted or not.
 	Halted() bool
-	// Returns the relative base state
+	// Returns the relative base state.
 	RelativeBase() int
-	// Returns the communication channel of the intcode program for sending input and receiving output (IO).
-	IO() chan int
+	// Returns a send only channel for sending input to the program.
+	// Before the user can send something they should be already listening for output.
+	// This is because before the intcode program reads from this channel, it
+	// will flush all outputs to the output channel once.
+	Input() chan<- int
+	// Returns a receive only channel for receiving output from the program.
+	// This channel will be sent on when the input opcode is hit or the program
+	// has halted. In these two cases it will flush the current outputs of the program
+	// to the user before continuing.
+	Output() <-chan []int
 }
 
 type intcodeProgram struct {
-	io                 chan int
 	halted             bool
 	memory             map[int]int
 	instructionPointer int
@@ -40,15 +47,15 @@ type intcodeProgram struct {
 	opcode             opcodeName
 	parameterModes     [3]parameterMode
 	relativeBase       int
-
-	IntcodeProgram
+	input              chan int
+	output             chan []int
+	data               []int
 }
 
 func (ip *intcodeProgram) Exec() {
-	io := ip.IO()
-
 	defer func() {
-		close(io)
+		close(ip.input)
+		close(ip.output)
 	}()
 
 	for {
@@ -78,8 +85,12 @@ func (ip *intcodeProgram) Halted() bool {
 	return ip.halted
 }
 
-func (ip *intcodeProgram) IO() chan int {
-	return ip.io
+func (ip *intcodeProgram) Input() chan<- int {
+	return ip.input
+}
+
+func (ip *intcodeProgram) Output() <-chan []int {
+	return ip.output
 }
 
 func (ip *intcodeProgram) RelativeBase() int {
@@ -95,7 +106,8 @@ func NewIntcodeProgram(intcode []int) IntcodeProgram {
 	}
 
 	return &intcodeProgram{
-		io:                 make(chan int),
+		input:              make(chan int),
+		output:             make(chan []int),
 		halted:             false,
 		memory:             memory,
 		instructionPointer: 0,

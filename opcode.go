@@ -29,12 +29,14 @@ func multiplyOpcode(ip *intcodeProgram) {
 }
 
 func inputOpcode(ip *intcodeProgram) {
-	ip.writeAt(1, <-ip.io)
+	ip.output <- ip.data
+	ip.data = []int{}
+	ip.writeAt(1, <-ip.input)
 	ip.movePointer(2)
 }
 
 func outputOpcode(ip *intcodeProgram) {
-	ip.io <- ip.readAt(1)
+	ip.data = append(ip.data, ip.readAt(1))
 	ip.movePointer(2)
 }
 
@@ -81,4 +83,5 @@ func relativeBaseOffsetOpcode(ip *intcodeProgram) {
 
 func haltOpcode(ip *intcodeProgram) {
 	ip.halted = true
+	ip.output <- ip.data
 }
